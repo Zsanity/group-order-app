@@ -1,0 +1,50 @@
+:root {
+  --background: hsl(30 40% 96%);
+  --foreground: hsl(24 18% 20%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(24 18% 20%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(24 18% 20%);
+  --primary: hsl(24 95% 53%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(30 60% 92%);
+  --secondary-foreground: hsl(24 30% 28%);
+  --muted: hsl(30 30% 90%);
+  --muted-foreground: hsl(24 10% 45%);
+  --accent: hsl(30 60% 92%);
+  --accent-foreground: hsl(24 30% 28%);
+  --destructive: hsl(0 84% 60%);
+  --destructive-foreground: hsl(0 0% 100%);
+  --border: hsl(30 25% 88%);
+  --input: hsl(30 25% 88%);
+  --ring: hsl(24 95% 53%);
+  --radius: 0.5rem;
+  --font-sans: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --font-sans: var(--font-sans);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
