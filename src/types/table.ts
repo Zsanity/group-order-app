@@ -20,6 +20,7 @@ export interface ICartItem {
 
 export interface IOrder {
   orderNo: string
+  userId: string // 提交该订单的用户
   createdAt: number
   totalAmount: number
   totalCount: number
@@ -29,8 +30,7 @@ export interface IOrder {
 export interface ITableState {
   roomCode: string // 4 位房间码
   participants: IParticipant[]
-  cartItems: ICartItem[]
-  status: 'ordering' | 'ordered' // 点餐中 / 已下单
-  order?: IOrder
+  cartItems: ICartItem[] // 未提交的活跃购物车
+  submitted: IOrder[] // 各用户已提交的订单（每人一条，互不影响）
   createdAt: number
 }

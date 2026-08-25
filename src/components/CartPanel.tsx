@@ -32,7 +32,7 @@ interface CartPanelProps {
 }
 
 export default function CartPanel({ open, onClose, onSubmit }: CartPanelProps) {
-  const { table, getUserTotal, updateQuantity, removeItem, updateRemark, getTotalAmount, getTotalCount } =
+  const { table, currentUserId, getUserTotal, updateQuantity, removeItem, updateRemark, getTotalAmount, getTotalCount } =
     useTable();
 
   const [remarkItemId, setRemarkItemId] = useState<string | null>(null);
@@ -43,7 +43,8 @@ export default function CartPanel({ open, onClose, onSubmit }: CartPanelProps) {
 
   const totalAmount = getTotalAmount();
   const totalCount = getTotalCount();
-  const isOrdered = table.status === 'ordered';
+  // 仅当当前用户自己已提交订单时，其购物车进入只读/已下单状态；其他人不受影响
+  const mySubmitted = table.submitted.some((s) => s.userId === currentUserId);
 
   const itemsByUser = table.participants.reduce<Record<string, ICartItem[]>>((acc, p) => {
     acc[p.id] = table.cartItems.filter((item) => item.userId === p.id);
@@ -85,7 +86,7 @@ export default function CartPanel({ open, onClose, onSubmit }: CartPanelProps) {
         <DialogContent className="max-w-lg max-h-[85vh] flex flex-col p-0 gap-0">
           <DialogHeader className="px-6 py-4 border-b">
             <DialogTitle className="flex items-center gap-2">
-              {isOrdered ? (
+              {mySubmitted ? (
                 <>
                   <Receipt className="size-5 text-primary" />
                   订单详情
@@ -149,7 +150,7 @@ export default function CartPanel({ open, onClose, onSubmit }: CartPanelProps) {
                                 </div>
                               </div>
 
-                              {!isOrdered ? (
+                              {!mySubmitted ? (
                                 <div className="flex items-center gap-2">
                                   <Button
                                     size="icon"
@@ -193,12 +194,12 @@ export default function CartPanel({ open, onClose, onSubmit }: CartPanelProps) {
                                   <Badge
                                     variant="outline"
                                     className="text-[11px] font-normal text-foreground border-border bg-card gap-1 cursor-pointer hover:bg-muted transition-colors"
-                                    onClick={() => !isOrdered && openRemark(item)}
+                                    onClick={() => !mySubmitted && openRemark(item)}
                                   >
                                     <MessageSquare className="size-3" />
                                     {item.remark}
                                   </Badge>
-                                  {!isOrdered && (
+                                  {!mySubmitted && (
                                     <button
                                       className="text-[11px] text-muted-foreground hover:text-primary"
                                       onClick={() => openRemark(item)}
@@ -207,7 +208,7 @@ export default function CartPanel({ open, onClose, onSubmit }: CartPanelProps) {
                                     </button>
                                   )}
                                 </>
-                              ) : !isOrdered ? (
+                              ) : !mySubmitted ? (
                                 <button
                                   className="text-[11px] text-muted-foreground hover:text-primary inline-flex items-center gap-1"
                                   onClick={() => openRemark(item)}
@@ -236,7 +237,7 @@ export default function CartPanel({ open, onClose, onSubmit }: CartPanelProps) {
                     ¥{totalAmount.toFixed(2)}
                   </span>
                 </div>
-                {!isOrdered ? (
+                {!mySubmitted ? (
                   <Button onClick={onSubmit} size="lg" className="gap-2">
                     <Receipt className="size-4" />
                     提交订单

@@ -22,13 +22,24 @@ import { useTable } from '@/context/TableContext';
 export default function BillPage() {
   const navigate = useNavigate();
   const { roomCode } = useParams<{ roomCode: string }>();
-  const { table, getUserTotal, cancelOrder } = useTable();
+  const { table, cancelOrder } = useTable();
 
   const [splitMode, setSplitMode] = useState<'aa' | 'perPerson'>('perPerson');
   const [cancelOpen, setCancelOpen] = useState(false);
 
-  const order = table?.order;
   const participantCount = table?.participants.length ?? 0;
+  const orders = table?.submitted ?? [];
+
+  const order = useMemo(() => {
+    if (orders.length === 0) return null;
+    const items = orders.flatMap((o) => o.items);
+    return {
+      totalAmount: orders.reduce((s, o) => s + o.totalAmount, 0),
+      totalCount: orders.reduce((s, o) => s + o.totalCount, 0),
+      items,
+      createdAt: Math.max(...orders.map((o) => o.createdAt)),
+    };
+  }, [orders]);
 
   const aaAmount = useMemo(() => {
     if (!order || participantCount === 0) return 0;
@@ -39,20 +50,25 @@ export default function BillPage() {
     if (!table) return {} as Record<string, number>;
     const result: Record<string, number> = {};
     table.participants.forEach((p) => {
-      result[p.id] = getUserTotal(p.id);
+      result[p.id] = orders
+        .flatMap((o) => o.items)
+        .filter((i) => i.userId === p.id)
+        .reduce((s, i) => s + i.price * i.quantity, 0);
     });
     return result;
-  }, [table, getUserTotal]);
+  }, [table, orders]);
 
   const perPersonCounts = useMemo(() => {
-    if (!table || !order) return {} as Record<string, number>;
+    if (!table) return {} as Record<string, number>;
     const result: Record<string, number> = {};
     table.participants.forEach((p) => {
-      const userItems = order.items.filter((i) => i.userId === p.id);
-      result[p.id] = userItems.reduce((s, i) => s + i.quantity, 0);
+      result[p.id] = orders
+        .flatMap((o) => o.items)
+        .filter((i) => i.userId === p.id)
+        .reduce((s, i) => s + i.quantity, 0);
     });
     return result;
-  }, [order, table]);
+  }, [table, orders]);
 
   if (!table || !order) {
     return (
@@ -90,7 +106,7 @@ export default function BillPage() {
           </Button>
           <div className="flex-1">
             <div className="font-semibold text-foreground">账单详情</div>
-            <div className="text-xs text-muted-foreground">订单号 {order.orderNo}</div>
+            <div className="text-xs text-muted-foreground">共 {orders.length} 人已提交订单</div>
           </div>
           <Badge variant="secondary" className="gap-1">
             <Users className="size-3" />
@@ -171,6 +187,7 @@ export default function BillPage() {
                   {table.participants.map((p, i) => {
                     const amount = perPersonAmounts[p.id];
                     const count = perPersonCounts[p.id];
+                    const submitted = orders.some((o) => o.userId === p.id);
                     return (
                       <motion.div
                         key={p.id}
@@ -190,14 +207,22 @@ export default function BillPage() {
                             <div className="flex-1 min-w-0">
                               <div className="font-semibold">{p.nickname}</div>
                               <div className="text-xs text-muted-foreground">
-                                点了 {count} 份菜
+                                {submitted ? `点了 ${count} 份菜` : '还没提交'}
                               </div>
                             </div>
                             <div className="text-right">
-                              <div className="text-xl font-black text-primary tabular-nums">
-                                ¥{amount.toFixed(2)}
-                              </div>
-                              <div className="text-[10px] text-muted-foreground">应付金额</div>
+                              {submitted ? (
+                                <>
+                                  <div className="text-xl font-black text-primary tabular-nums">
+                                    ¥{amount.toFixed(2)}
+                                  </div>
+                                  <div className="text-[10px] text-muted-foreground">应付金额</div>
+                                </>
+                              ) : (
+                                <Badge variant="secondary" className="text-[10px] h-5 px-2">
+                                  未提交
+                                </Badge>
+                              )}
                             </div>
                           </CardContent>
                         </Card>
@@ -219,38 +244,50 @@ export default function BillPage() {
                   transition={{ duration: 0.25 }}
                   className="space-y-3"
                 >
-                  {table.participants.map((p, i) => (
-                    <motion.div
-                      key={p.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{
-                        duration: 0.3,
-                        delay: 0.1 + i * 0.06,
-                        ease: 'easeOut',
-                      }}
-                    >
-                      <Card>
-                        <CardContent className="p-4 flex items-center gap-3">
-                          <div className="size-12 rounded-xl bg-muted flex items-center justify-center text-2xl shrink-0">
-                            {p.avatar}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="font-semibold">{p.nickname}</div>
-                            <div className="text-xs text-muted-foreground">
-                              人均 AA
+                  {table.participants.map((p, i) => {
+                    const submitted = orders.some((o) => o.userId === p.id);
+                    return (
+                      <motion.div
+                        key={p.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{
+                          duration: 0.3,
+                          delay: 0.1 + i * 0.06,
+                          ease: 'easeOut',
+                        }}
+                      >
+                        <Card>
+                          <CardContent className="p-4 flex items-center gap-3">
+                            <div className="size-12 rounded-xl bg-muted flex items-center justify-center text-2xl shrink-0">
+                              {p.avatar}
                             </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-xl font-black text-primary tabular-nums">
-                              ¥{aaAmount.toFixed(2)}
+                            <div className="flex-1 min-w-0">
+                              <div className="font-semibold">{p.nickname}</div>
+                              <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+                                人均 AA
+                                {submitted ? (
+                                  <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
+                                    已提交
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className="text-[10px] h-4 px-1.5 text-muted-foreground">
+                                    未提交
+                                  </Badge>
+                                )}
+                              </div>
                             </div>
-                            <div className="text-[10px] text-muted-foreground">每人应付</div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </motion.div>
-                  ))}
+                            <div className="text-right">
+                              <div className="text-xl font-black text-primary tabular-nums">
+                                ¥{aaAmount.toFixed(2)}
+                              </div>
+                              <div className="text-[10px] text-muted-foreground">每人应付</div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </motion.div>
+                    );
+                  })}
                   <p className="text-xs text-center text-muted-foreground pt-1">
                     总金额 ¥{order.totalAmount.toFixed(2)} ÷ {participantCount} 人 = ¥{aaAmount.toFixed(2)}/人
                   </p>
@@ -324,7 +361,7 @@ export default function BillPage() {
               <AlertDialogHeader>
                 <AlertDialogTitle>确定要取消订单吗？</AlertDialogTitle>
                 <AlertDialogDescription>
-                  取消后订单状态恢复为「点餐中」，已点的菜品会保留在购物车里，你可以继续加菜或修改。
+                  取消后你的订单将被撤销，已点的菜品会退回购物车，你可以继续加菜或修改；不影响其他已提交订单的人。
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

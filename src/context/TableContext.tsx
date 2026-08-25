@@ -1,51 +1,74 @@
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react'
-import type { ITableState, IParticipant, ICartItem, IOrder } from '@/types/table'
+import { createContext, useContext, useEffect, useState, useCallback, useRef, type ReactNode } from 'react'
+import type { ITableState, IParticipant } from '@/types/table'
 
-const STORAGE_KEY_TABLE = 'grouporder_table'
-const STORAGE_KEY_CURRENT_USER = 'grouporder_current_user_id'
+const ROOM_KEY = 'grouporder_roomcode'
+const USER_KEY = 'grouporder_current_user_id'
+const SESSION_KEY = 'grouporder_session'
 
-const AVATAR_POOL = ['🍎', '🍊', '🍋', '🍇', '🍓', '🍑', '🥝', '🍒', '🍍', '🥑', '🍉', '🥭']
-
-function genId(prefix = ''): string {
-  return prefix + Math.random().toString(36).slice(2, 10)
+interface Account {
+  id: string
+  username: string
+  nickname: string
 }
 
-function genRoomCode(): string {
-  return Math.floor(1000 + Math.random() * 9000).toString()
-}
-
-function pickAvatar(used: string[]): string {
-  const remain = AVATAR_POOL.filter((a) => !used.includes(a))
-  const pool = remain.length > 0 ? remain : AVATAR_POOL
-  return pool[Math.floor(Math.random() * pool.length)]
-}
-
-function loadTableFromStorage(): ITableState | null {
+function loadAccountFromStorage(): Account | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_TABLE)
-    return raw ? (JSON.parse(raw) as ITableState) : null
-  } catch (e) {
-    console.error('Failed to parse table state:', String(e))
+    const raw = localStorage.getItem(SESSION_KEY)
+    if (!raw) return null
+    const a = JSON.parse(raw)
+    if (a && a.id && a.username) return a
     return null
+  } catch {
+    return null
+  }
+}
+
+function saveAccount(acc: Account) {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(acc))
+  } catch {
+    /* ignore */
   }
 }
 
 function loadCurrentUserFromStorage(): string | null {
   try {
-    return localStorage.getItem(STORAGE_KEY_CURRENT_USER) || null
-  } catch (e) {
-    console.error('Failed to read current user:', String(e))
+    return localStorage.getItem(USER_KEY) || null
+  } catch {
     return null
   }
 }
 
+function loadRoomFromStorage(): string | null {
+  try {
+    return localStorage.getItem(ROOM_KEY) || null
+  } catch {
+    return null
+  }
+}
+
+type ConnectionState = 'idle' | 'connecting' | 'connected' | 'disconnected'
+
+function wsUrl(): string {
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${proto}//${window.location.host}/ws`
+}
+
 interface TableContextValue {
+  account: Account | null
+  login: (username: string, password: string) => Promise<{ ok: boolean; message?: string }>
+  register: (username: string, password: string) => Promise<{ ok: boolean; message?: string }>
+  logout: () => void
   table: ITableState | null
   currentUserId: string | null
   currentUser: IParticipant | null
-  createTable: (nickname: string) => { roomCode: string; userId: string }
-  joinTable: (roomCode: string, nickname: string) => boolean
-  addParticipant: (nickname: string) => string | null
+  connectionState: ConnectionState
+  createTable: (nickname: string) => Promise<{ roomCode: string; userId: string }>
+  joinTable: (
+    roomCode: string,
+    nickname: string
+  ) => Promise<{ ok: boolean; message?: string }>
+  addParticipant: (nickname: string) => Promise<string | null>
   setCurrentUser: (userId: string) => void
   addDish: (dishId: string, dishName: string, price: number) => void
   updateQuantity: (itemId: string, quantity: number) => void
@@ -63,100 +86,263 @@ interface TableContextValue {
 const TableContext = createContext<TableContextValue | null>(null)
 
 export function TableProvider({ children }: { children: ReactNode }) {
-  const [table, setTable] = useState<ITableState | null>(() => loadTableFromStorage())
+  const [account, setAccount] = useState<Account | null>(() => loadAccountFromStorage())
+  const [table, setTable] = useState<ITableState | null>(null)
   const [currentUserId, setCurrentUserIdState] = useState<string | null>(() =>
-    loadCurrentUserFromStorage()
+    loadAccountFromStorage()?.id ?? loadCurrentUserFromStorage()
   )
+  const [connectionState, setConnectionState] = useState<ConnectionState>('idle')
+
+  const wsRef = useRef<WebSocket | null>(null)
+  const genRef = useRef(0)
+  const leavingRef = useRef(false)
+  const tableRef = useRef<ITableState | null>(null)
+  const currentUserIdRef = useRef<string | null>(currentUserId)
+  const accountRef = useRef<Account | null>(account)
+  const pendingAddsRef = useRef<Map<string, (id: string | null) => void>>(new Map())
 
   useEffect(() => {
-    if (table) {
-      localStorage.setItem(STORAGE_KEY_TABLE, JSON.stringify(table))
-    }
+    tableRef.current = table
   }, [table])
 
   useEffect(() => {
+    accountRef.current = account
+  }, [account])
+
+  useEffect(() => {
+    currentUserIdRef.current = currentUserId
     if (currentUserId) {
-      localStorage.setItem(STORAGE_KEY_CURRENT_USER, currentUserId)
+      try {
+        localStorage.setItem(USER_KEY, currentUserId)
+      } catch {
+        /* ignore */
+      }
     }
   }, [currentUserId])
 
-  const currentUser = table && currentUserId
-    ? table.participants.find((p) => p.id === currentUserId) ?? null
-    : null
+  const login = useCallback(async (username: string, password: string) => {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (res.ok && data.userId) {
+      const acc: Account = {
+        id: data.userId,
+        username: data.username,
+        nickname: data.nickname || data.username,
+      }
+      setAccount(acc)
+      saveAccount(acc)
+      setCurrentUserIdState(acc.id)
+      return { ok: true }
+    }
+    return { ok: false, message: data.message || '登录失败，请稍后再试' }
+  }, [])
+
+  const register = useCallback(async (username: string, password: string) => {
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (res.ok && data.userId) {
+      const acc: Account = {
+        id: data.userId,
+        username: data.username,
+        nickname: data.nickname || data.username,
+      }
+      setAccount(acc)
+      saveAccount(acc)
+      setCurrentUserIdState(acc.id)
+      return { ok: true }
+    }
+    return { ok: false, message: data.message || '注册失败，请稍后再试' }
+  }, [])
+
+  const logout = useCallback(() => {
+    leavingRef.current = true
+    genRef.current += 1
+    if (wsRef.current) {
+      try {
+        wsRef.current.close()
+      } catch {
+        /* ignore */
+      }
+      wsRef.current = null
+    }
+    try {
+      localStorage.removeItem(SESSION_KEY)
+      localStorage.removeItem(ROOM_KEY)
+      localStorage.removeItem(USER_KEY)
+    } catch {
+      /* ignore */
+    }
+    pendingAddsRef.current.clear()
+    setAccount(null)
+    setTable(null)
+    setCurrentUserIdState(null)
+    setConnectionState('idle')
+  }, [])
+
+  const sendIntent = useCallback((msg: Record<string, unknown>) => {
+    const ws = wsRef.current
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(msg))
+    }
+  }, [])
+
+  const connect = useCallback((roomCode: string, userId: string) => {
+    const gen = ++genRef.current
+    leavingRef.current = false
+    const ws = new WebSocket(`${wsUrl()}?room=${encodeURIComponent(roomCode)}&userId=${encodeURIComponent(userId)}`)
+    wsRef.current = ws
+    setConnectionState('connecting')
+
+    ws.onmessage = (ev) => {
+      if (gen !== genRef.current) return
+      let msg: { type?: string; state?: ITableState; message?: string }
+      try {
+        msg = JSON.parse(ev.data as string)
+      } catch {
+        return
+      }
+      if (msg.type === 'state' && msg.state) {
+        setTable(msg.state)
+        // 解析待处理的 addParticipant
+        const pending = pendingAddsRef.current
+        if (pending.size > 0) {
+          const known = new Set((tableRef.current?.participants || []).map((p) => p.id))
+          for (const [name, resolve] of Array.from(pending.entries())) {
+            const found = msg.state.participants.find(
+              (p) => p.nickname === name && !known.has(p.id)
+            )
+            if (found) {
+              pending.delete(name)
+              resolve(found.id)
+            }
+          }
+        }
+        setConnectionState('connected')
+      } else if (msg.type === 'error') {
+        // 服务器返回错误，如无效房间
+      }
+    }
+
+    ws.onclose = (ev) => {
+      if (gen !== genRef.current) return
+      const invalid = ev.code === 4003
+      if (invalid) {
+        try {
+          localStorage.removeItem(ROOM_KEY)
+          localStorage.removeItem(USER_KEY)
+        } catch {
+          /* ignore */
+        }
+        setCurrentUserIdState(null)
+        setTable(null)
+        setConnectionState('idle')
+        return
+      }
+      setConnectionState('disconnected')
+      const rc = loadRoomFromStorage()
+      const uid = loadCurrentUserFromStorage()
+      if (!leavingRef.current && rc && uid) {
+        setTimeout(() => connect(rc, uid), 2000)
+      }
+    }
+
+    ws.onerror = () => {
+      /* onclose 统一处理 */
+    }
+  }, [])
+
+  // 页面加载时自动重连
+  useEffect(() => {
+    const rc = loadRoomFromStorage()
+    const uid = loadCurrentUserFromStorage()
+    if (rc && uid) {
+      connect(rc, uid)
+    }
+    return () => {
+      leavingRef.current = true
+      genRef.current += 1
+    }
+  }, [connect])
+
+  const currentUser =
+    table && currentUserId
+      ? table.participants.find((p) => p.id === currentUserId) ?? null
+      : null
 
   const createTable = useCallback(
-    (nickname: string) => {
-      const roomCode = genRoomCode()
-      const userId = genId('u_')
-      const newTable: ITableState = {
-        roomCode,
-        participants: [
-          {
-            id: userId,
-            nickname,
-            avatar: AVATAR_POOL[0],
-            joinedAt: Date.now(),
-          },
-        ],
-        cartItems: [],
-        status: 'ordering',
-        createdAt: Date.now(),
+    async (nickname: string) => {
+      const res = await fetch('/api/rooms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nickname, userId: accountRef.current?.id }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && data.roomCode && data.userId) {
+        try {
+          localStorage.setItem(ROOM_KEY, data.roomCode)
+          localStorage.setItem(USER_KEY, data.userId)
+        } catch {
+          /* ignore */
+        }
+        setCurrentUserIdState(data.userId)
+        connect(data.roomCode, data.userId)
+        return { roomCode: data.roomCode, userId: data.userId }
       }
-      setTable(newTable)
-      setCurrentUserIdState(userId)
-      return { roomCode, userId }
+      throw new Error('创建餐桌失败')
     },
-    []
+    [connect]
   )
 
   const joinTable = useCallback(
-    (roomCode: string, nickname: string): boolean => {
-      if (!table) {
-        console.warn('No table exists to join')
-        return false
-      }
-      if (table.roomCode !== roomCode) {
-        console.warn('Room code mismatch')
-        return false
-      }
-      const usedAvatars = table.participants.map((p) => p.avatar)
-      const newParticipant: IParticipant = {
-        id: genId('u_'),
-        nickname,
-        avatar: pickAvatar(usedAvatars),
-        joinedAt: Date.now(),
-      }
-      setTable({
-        ...table,
-        participants: [...table.participants, newParticipant],
+    async (roomCode: string, nickname: string) => {
+      const res = await fetch('/api/rooms/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomCode, nickname, userId: accountRef.current?.id }),
       })
-      setCurrentUserIdState(newParticipant.id)
-      return true
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && data.userId) {
+        try {
+          localStorage.setItem(ROOM_KEY, roomCode)
+          localStorage.setItem(USER_KEY, data.userId)
+        } catch {
+          /* ignore */
+        }
+        setCurrentUserIdState(data.userId)
+        connect(roomCode, data.userId)
+        return { ok: true }
+      }
+      let message = '加入失败，请稍后再试'
+      if (data.error === 'ROOM_NOT_FOUND') message = '房间不存在或已失效'
+      else if (data.error === 'NICKNAME_TAKEN') message = '昵称已被占用，请换一个'
+      return { ok: false, message }
     },
-    [table]
+    [connect]
   )
 
-  const addParticipant = useCallback(
-    (nickname: string): string | null => {
-      if (!table) return null
-      if (table.participants.some((p) => p.nickname === nickname)) {
-        return null
-      }
-      const usedAvatars = table.participants.map((p) => p.avatar)
-      const newParticipant: IParticipant = {
-        id: genId('u_'),
-        nickname,
-        avatar: pickAvatar(usedAvatars),
-        joinedAt: Date.now(),
-      }
-      setTable({
-        ...table,
-        participants: [...table.participants, newParticipant],
-      })
-      return newParticipant.id
-    },
-    [table]
-  )
+  const addParticipant = useCallback((nickname: string) => {
+    return new Promise<string | null>((resolve) => {
+      const cur = tableRef.current
+      if (!cur) return resolve(null)
+      if (cur.participants.some((p) => p.nickname === nickname)) return resolve(null)
+      pendingAddsRef.current.set(nickname, resolve)
+      sendIntent({ type: 'participant:add', nickname })
+      setTimeout(() => {
+        if (pendingAddsRef.current.has(nickname)) {
+          pendingAddsRef.current.delete(nickname)
+          resolve(null)
+        }
+      }, 5000)
+    })
+  }, [sendIntent])
 
   const setCurrentUser = useCallback((userId: string) => {
     setCurrentUserIdState(userId)
@@ -164,114 +350,66 @@ export function TableProvider({ children }: { children: ReactNode }) {
 
   const addDish = useCallback(
     (dishId: string, dishName: string, price: number) => {
-      if (!table || !currentUserId) return
-      if (table.status !== 'ordering') return
-
-      const existingIdx = table.cartItems.findIndex(
-        (item) => item.dishId === dishId && item.userId === currentUserId
-      )
-      if (existingIdx >= 0) {
-        const updated = [...table.cartItems]
-        updated[existingIdx] = {
-          ...updated[existingIdx],
-          quantity: updated[existingIdx].quantity + 1,
-        }
-        setTable({ ...table, cartItems: updated })
-      } else {
-        const newItem: ICartItem = {
-          id: genId('ci_'),
-          dishId,
-          dishName,
-          price,
-          quantity: 1,
-          userId: currentUserId,
-          addedAt: Date.now(),
-        }
-        setTable({ ...table, cartItems: [...table.cartItems, newItem] })
-      }
+      const cur = tableRef.current
+      const uid = currentUserIdRef.current
+      if (!cur || !uid) return
+      // 仅当当前用户自己已提交订单时锁定其加菜；其他人不受影响
+      if (cur.submitted.some((s) => s.userId === uid)) return
+      sendIntent({ type: 'cart:add', userId: uid, dishId, dishName, price })
     },
-    [table, currentUserId]
+    [sendIntent]
   )
 
   const updateQuantity = useCallback(
     (itemId: string, quantity: number) => {
-      if (!table) return
-      if (quantity <= 0) {
-        setTable({
-          ...table,
-          cartItems: table.cartItems.filter((i) => i.id !== itemId),
-        })
-      } else {
-        setTable({
-          ...table,
-          cartItems: table.cartItems.map((i) =>
-            i.id === itemId ? { ...i, quantity } : i
-          ),
-        })
-      }
+      sendIntent({ type: 'cart:updateQty', itemId, quantity })
     },
-    [table]
-  )
-
-  const removeItem = useCallback(
-    (itemId: string) => {
-      if (!table) return
-      setTable({
-        ...table,
-        cartItems: table.cartItems.filter((i) => i.id !== itemId),
-      })
-    },
-    [table]
+    [sendIntent]
   )
 
   const updateRemark = useCallback(
     (itemId: string, remark: string) => {
-      if (!table) return
-      setTable({
-        ...table,
-        cartItems: table.cartItems.map((i) =>
-          i.id === itemId ? { ...i, remark } : i
-        ),
-      })
+      sendIntent({ type: 'cart:updateRemark', itemId, remark })
     },
-    [table]
+    [sendIntent]
+  )
+
+  const removeItem = useCallback(
+    (itemId: string) => {
+      sendIntent({ type: 'cart:remove', itemId })
+    },
+    [sendIntent]
   )
 
   const submitOrder = useCallback(() => {
-    if (!table || table.cartItems.length === 0) return
-    const totalAmount = table.cartItems.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0
-    )
-    const totalCount = table.cartItems.reduce((sum, item) => sum + item.quantity, 0)
-    const order: IOrder = {
-      orderNo: 'NO' + Date.now().toString().slice(-8),
-      createdAt: Date.now(),
-      totalAmount,
-      totalCount,
-      items: table.cartItems.map((i) => ({ ...i })),
-    }
-    setTable({
-      ...table,
-      status: 'ordered',
-      order,
-    })
-  }, [table])
+    sendIntent({ type: 'order:submit' })
+  }, [sendIntent])
 
   const cancelOrder = useCallback(() => {
-    if (!table || table.status !== 'ordered') return
-    setTable({
-      ...table,
-      status: 'ordering',
-      order: undefined,
-    })
-  }, [table])
+    sendIntent({ type: 'order:cancel' })
+  }, [sendIntent])
 
   const leaveTable = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY_TABLE)
-    localStorage.removeItem(STORAGE_KEY_CURRENT_USER)
+    leavingRef.current = true
+    genRef.current += 1
+    if (wsRef.current) {
+      try {
+        wsRef.current.close()
+      } catch {
+        /* ignore */
+      }
+      wsRef.current = null
+    }
+    try {
+      localStorage.removeItem(ROOM_KEY)
+      localStorage.removeItem(USER_KEY)
+    } catch {
+      /* ignore */
+    }
+    pendingAddsRef.current.clear()
     setTable(null)
     setCurrentUserIdState(null)
+    setConnectionState('idle')
   }, [])
 
   const getUserTotal = useCallback(
@@ -305,9 +443,14 @@ export function TableProvider({ children }: { children: ReactNode }) {
   )
 
   const value: TableContextValue = {
+    account,
+    login,
+    register,
+    logout,
     table,
     currentUserId,
     currentUser,
+    connectionState,
     createTable,
     joinTable,
     addParticipant,

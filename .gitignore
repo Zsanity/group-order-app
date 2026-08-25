@@ -12,3 +12,6 @@ coverage/
 tmp/
 .eslintcache
 *.tsbuildinfo
+# 本地数据库（含用户数据，不入库）
+*.sqlite
+*.sqlite-journal

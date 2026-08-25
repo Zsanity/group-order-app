@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, PlusCircle, LogIn, ArrowRight } from 'lucide-react';
+import { Utensils, PlusCircle, LogIn, ArrowRight, LogOut, History } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -16,50 +16,98 @@ import {
 } from '@/components/ui/dialog';
 import { useTable } from '@/context/TableContext';
 
+interface MyRoom {
+  roomCode: string;
+  createdAt: number;
+  nickname: string;
+  avatar: string;
+  participantCount: number;
+  submittedCount: number;
+}
+
 export default function HomePage() {
   const navigate = useNavigate();
-  const { table, createTable, addParticipant, setCurrentUser, currentUser } = useTable();
+  const { table, createTable, joinTable, currentUser, account, logout } = useTable();
 
   const [createOpen, setCreateOpen] = useState(false);
   const [joinOpen, setJoinOpen] = useState(false);
   const [nickname, setNickname] = useState('');
   const [roomCodeInput, setRoomCodeInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [myRooms, setMyRooms] = useState<MyRoom[]>([]);
 
   const validNickname = nickname.trim().length >= 2 && nickname.trim().length <= 8;
 
-  const handleCreate = () => {
-    if (!validNickname) return;
-    const { roomCode } = createTable(nickname.trim());
-    setCreateOpen(false);
-    setNickname('');
-    toast.success('餐桌创建成功');
-    navigate(`/order/${roomCode}`);
+  useEffect(() => {
+    let alive = true;
+    if (!account?.id) {
+      setMyRooms([]);
+      return;
+    }
+    fetch(`/api/users/${account.id}/rooms`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (alive) setMyRooms(d.rooms || []);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [account?.id]);
+
+  const handleLogout = () => {
+    logout();
+    toast.success('已退出登录');
+    navigate('/login', { replace: true });
   };
 
-  const handleJoin = () => {
+  const handleEnterRoom = async (room: MyRoom) => {
+    setLoading(true);
+    const res = await joinTable(room.roomCode, room.nickname);
+    setLoading(false);
+    if (!res.ok) {
+      toast.error(res.message || '进入失败');
+      return;
+    }
+    toast.success(`已进入 ${room.roomCode} 号桌`);
+    navigate(`/order/${room.roomCode}`);
+  };
+
+  const fmtTime = (ts: number) => {
+    const d = new Date(ts);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const handleCreate = async () => {
+    if (!validNickname) return;
+    setLoading(true);
+    try {
+      const { roomCode } = await createTable(nickname.trim());
+      setCreateOpen(false);
+      setNickname('');
+      toast.success('餐桌创建成功');
+      navigate(`/order/${roomCode}`);
+    } catch {
+      toast.error('创建失败，请稍后再试');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleJoin = async () => {
     if (!validNickname) return;
     if (roomCodeInput.length !== 4) {
       toast.error('请输入4位房间码');
       return;
     }
-    if (!table) {
-      toast.error('本地暂无餐桌，请先创建一个或让朋友分享');
+    setLoading(true);
+    const res = await joinTable(roomCodeInput, nickname.trim());
+    setLoading(false);
+    if (!res.ok) {
+      toast.error(res.message || '加入失败');
       return;
     }
-    if (table.roomCode !== roomCodeInput) {
-      toast.error('房间码不正确');
-      return;
-    }
-    if (table.participants.some((p) => p.nickname === nickname.trim())) {
-      toast.error('昵称已被使用，请换一个');
-      return;
-    }
-    const newUserId = addParticipant(nickname.trim());
-    if (!newUserId) {
-      toast.error('加入失败');
-      return;
-    }
-    setCurrentUser(newUserId);
     toast.success(`加入成功！你是 ${nickname.trim()}`);
     setJoinOpen(false);
     setNickname('');
@@ -78,6 +126,25 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/10">
       <main className="max-w-md mx-auto px-4 pt-16 pb-12">
+        {/* 当前登录用户 + 退出 */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-2 text-sm">
+            <span className="inline-flex items-center justify-center size-8 rounded-full bg-primary/10 text-primary font-bold">
+              {account?.nickname?.[0] || account?.username?.[0] || '?'}
+            </span>
+            <span className="text-muted-foreground">
+              已登录：<span className="font-medium text-foreground">{account?.username || ''}</span>
+            </span>
+          </div>
+          <button
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors"
+            onClick={handleLogout}
+          >
+            <LogOut className="size-3.5" />
+            退出
+          </button>
+        </div>
+
         {/* Logo / 标题 */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -122,6 +189,51 @@ export default function HomePage() {
           )}
         </AnimatePresence>
 
+        {/* 我的餐桌 */}
+        {myRooms.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: 'easeOut' }}
+            className="mb-5"
+          >
+            <div className="flex items-center gap-1.5 text-sm font-semibold text-foreground mb-2">
+              <History className="size-4 text-primary" />
+              我的餐桌
+              <span className="text-xs font-normal text-muted-foreground">({myRooms.length})</span>
+            </div>
+            <div className="space-y-2">
+              {myRooms.map((room) => (
+                <Card
+                  key={room.roomCode}
+                  className="cursor-pointer hover:border-primary/40 hover:shadow-md transition-all"
+                  onClick={() => handleEnterRoom(room)}
+                >
+                  <CardContent className="p-3 flex items-center gap-3">
+                    <div className="size-10 rounded-xl bg-secondary/60 flex items-center justify-center text-sm font-bold tracking-wider text-foreground">
+                      {room.roomCode}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm truncate">
+                        {room.nickname} · {room.participantCount} 人
+                        {room.submittedCount > 0 && (
+                          <span className="ml-1.5 text-[10px] text-primary bg-primary/10 px-1.5 py-0.5 rounded">
+                            已提交 {room.submittedCount}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        创建于 {fmtTime(room.createdAt)}
+                      </div>
+                    </div>
+                    <ArrowRight className="size-4 text-primary shrink-0" />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
         {/* 两个操作卡片 */}
         <div className="space-y-4">
           <motion.div
@@ -132,7 +244,7 @@ export default function HomePage() {
             <Card
               className="cursor-pointer hover:shadow-md transition-shadow border-border"
               onClick={() => {
-                setNickname('');
+                setNickname(account?.nickname || account?.username || '');
                 setCreateOpen(true);
               }}
             >
@@ -160,7 +272,7 @@ export default function HomePage() {
             <Card
               className="cursor-pointer hover:shadow-md transition-shadow border-border"
               onClick={() => {
-                setNickname('');
+                setNickname(account?.nickname || account?.username || '');
                 setRoomCodeInput('');
                 setJoinOpen(true);
               }}
@@ -224,8 +336,8 @@ export default function HomePage() {
             <Button variant="secondary" onClick={() => setCreateOpen(false)}>
               取消
             </Button>
-            <Button onClick={handleCreate} disabled={!validNickname}>
-              创建
+            <Button onClick={handleCreate} disabled={!validNickname || loading}>
+              {loading ? '创建中...' : '创建'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -271,8 +383,8 @@ export default function HomePage() {
             <Button variant="secondary" onClick={() => setJoinOpen(false)}>
               取消
             </Button>
-            <Button onClick={handleJoin} disabled={!validNickname || roomCodeInput.length !== 4}>
-              加入
+            <Button onClick={handleJoin} disabled={!validNickname || roomCodeInput.length !== 4 || loading}>
+              {loading ? '加入中...' : '加入'}
             </Button>
           </DialogFooter>
         </DialogContent>

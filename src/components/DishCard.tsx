@@ -37,9 +37,16 @@ export default function DishCard({ dish, quantity, onAdd, onDecrease, disabled, 
             </div>
           </div>
           <div className="flex items-center justify-between mt-2">
-            <span className="text-primary font-bold text-lg">
-              ¥{dish.price}
-            </span>
+            <div className="flex items-baseline gap-1">
+              <span className="text-primary font-bold text-lg">
+                ¥{dish.price}
+              </span>
+              {dish.spec && (
+                <span className="text-[11px] text-muted-foreground">
+                  /{dish.spec}
+                </span>
+              )}
+            </div>
             {showTotal ? (
               <span className="text-xs text-muted-foreground bg-muted px-2.5 py-1 rounded-full">
                 {disabledText ?? `已点 ×${totalQuantity}`}

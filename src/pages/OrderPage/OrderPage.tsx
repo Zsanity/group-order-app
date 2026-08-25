@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ShoppingCart, Users, ChevronLeft, UserPlus, Receipt } from 'lucide-react';
+import { ShoppingCart, Users, ChevronLeft, Receipt } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -18,7 +18,7 @@ import CartPanel from '@/components/CartPanel';
 import ParticipantPanel from '@/components/ParticipantPanel';
 import SubmitConfirmDialog from '@/components/SubmitConfirmDialog';
 import { useTable } from '@/context/TableContext';
-import { MOCK_CATEGORIES, MOCK_DISHES } from '@/data/menu';
+import { MOCK_CATEGORIES, MOCK_DISHES, MENU_NOTE } from '@/data/menu';
 
 export default function OrderPage() {
   const navigate = useNavigate();
@@ -27,11 +27,11 @@ export default function OrderPage() {
     table,
     currentUserId,
     currentUser,
+    connectionState,
     addDish,
     updateQuantity,
     addParticipant,
     submitOrder,
-    getUserTotal,
     getTotalAmount,
     getTotalCount,
     getDishTotalQuantity,
@@ -46,13 +46,14 @@ export default function OrderPage() {
 
   const categoryRefs = useRef<Record<string, HTMLElement | null>>({});
 
-  const isOrdered = table?.status === 'ordered';
+  const myOrder = table?.submitted.find((s) => s.userId === currentUserId);
+  const mySubmitted = !!myOrder;
 
   useEffect(() => {
-    if (table === null) {
+    if (table === null && connectionState !== 'connecting') {
       navigate('/', { replace: true });
     }
-  }, [table, navigate]);
+  }, [table, connectionState, navigate]);
 
   const dishQuantities = useMemo(() => {
     if (!table || !currentUserId) return {} as Record<string, number>;
@@ -68,7 +69,7 @@ export default function OrderPage() {
   const totalCount = getTotalCount();
   const totalAmount = getTotalAmount();
 
-  const handleAddUser = () => {
+  const handleAddUser = async () => {
     const name = newNickname.trim();
     if (name.length < 2 || name.length > 8) {
       toast.error('昵称需要 2-8 个字');
@@ -79,11 +80,13 @@ export default function OrderPage() {
       toast.error('昵称已被使用');
       return;
     }
-    const id = addParticipant(name);
+    const id = await addParticipant(name);
     if (id) {
       toast.success(`${name} 已加入`);
       setAddUserOpen(false);
       setNewNickname('');
+    } else {
+      toast.error('添加失败');
     }
   };
 
@@ -125,11 +128,13 @@ export default function OrderPage() {
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">房间码</span>
               <span className="font-bold text-primary tracking-wider">{table.roomCode}</span>
-              {isOrdered && (
+              {table.submitted.length > 0 && (
                 <div className="flex items-center gap-1.5">
-                  <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
-                    已下单
-                  </Badge>
+                  {mySubmitted && (
+                    <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
+                      已下单
+                    </Badge>
+                  )}
                   <button
                     className="text-[11px] text-primary hover:text-primary/80 font-medium inline-flex items-center gap-0.5 transition-colors"
                     onClick={handleViewBill}
@@ -208,6 +213,9 @@ export default function OrderPage() {
 
       {/* 菜品列表 */}
       <main className="px-4 py-4 space-y-6">
+        <div className="text-center text-xs text-muted-foreground bg-muted/40 border border-border/40 rounded-lg px-3 py-2">
+          {MENU_NOTE}
+        </div>
         {MOCK_CATEGORIES.map((cat) => {
           const dishes = MOCK_DISHES.filter((d) => d.category === cat.key);
           return (
@@ -237,7 +245,7 @@ export default function OrderPage() {
                         updateQuantity(item.id, item.quantity - 1);
                       }
                     }}
-                    disabled={isOrdered}
+                    disabled={mySubmitted}
                     totalQuantity={getDishTotalQuantity(dish.id)}
                   />
                 ))}
@@ -283,9 +291,9 @@ export default function OrderPage() {
                 size="lg"
                 variant="secondary"
                 className="rounded-xl"
-                onClick={isOrdered ? handleViewBill : () => setCartOpen(true)}
+                onClick={mySubmitted ? handleViewBill : () => setCartOpen(true)}
               >
-                {isOrdered ? (
+                {mySubmitted ? (
                   <>
                     <Receipt className="size-4 mr-1.5" />
                     查看账单
@@ -300,7 +308,7 @@ export default function OrderPage() {
       </AnimatePresence>
 
       {/* 空状态底部提示（购物车为空时） */}
-      {totalCount === 0 && !isOrdered && (
+      {totalCount === 0 && !mySubmitted && (
         <div className="fixed bottom-6 left-4 right-4 max-w-md mx-auto z-40 pointer-events-none">
           <div className="bg-card/90 backdrop-blur rounded-xl px-4 py-3 text-center text-sm text-muted-foreground border shadow-sm">
             还没有点菜哦，快选几道喜欢的吧 🍲
