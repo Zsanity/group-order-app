@@ -178,36 +178,36 @@ export default function OrderPage() {
             </div>
           </div>
         )}
-      </header>
 
-      {/* 分类标签 */}
-      <div className="sticky top-[60px] md:top-[60px] z-30 bg-background/80 backdrop-blur-md border-b border-border/20">
-        <div className="flex overflow-x-auto gap-1 px-3 py-2 no-scrollbar">
-          {MOCK_CATEGORIES.map((cat) => {
-            const active = activeCategory === cat.key;
-            return (
-              <button
-                key={cat.key}
-                onClick={() => {
-                  setActiveCategory(cat.key);
-                  categoryRefs.current[cat.key]?.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'start',
-                  });
-                }}
-                className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-1.5 ${
-                  active
-                    ? 'bg-primary text-primary-foreground shadow-sm'
-                    : 'bg-muted/50 text-muted-foreground hover:bg-muted'
-                }`}
-              >
-                <span>{cat.icon}</span>
-                {cat.name}
-              </button>
-            );
-          })}
+        {/* 分类标签（与头部一起吸顶，不随滚动被遮挡） */}
+        <div className="border-t border-border/20">
+          <div className="flex overflow-x-auto gap-1 px-3 py-2 no-scrollbar">
+            {MOCK_CATEGORIES.map((cat) => {
+              const active = activeCategory === cat.key;
+              return (
+                <button
+                  key={cat.key}
+                  onClick={() => {
+                    setActiveCategory(cat.key);
+                    categoryRefs.current[cat.key]?.scrollIntoView({
+                      behavior: 'smooth',
+                      block: 'start',
+                    });
+                  }}
+                  className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-1.5 ${
+                    active
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  <span>{cat.icon}</span>
+                  {cat.name}
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      </header>
 
       {/* 菜品列表 */}
       <main className="px-4 py-4 space-y-6">

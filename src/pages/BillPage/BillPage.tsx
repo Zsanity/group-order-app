@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, Users, Receipt, CreditCard, UserCheck, SplitSquareVertical, RotateCcw } from 'lucide-react';
+import { ChevronLeft, Users, Receipt, CreditCard, UserCheck, SplitSquareVertical, RotateCcw, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -69,6 +69,45 @@ export default function BillPage() {
     });
     return result;
   }, [table, orders]);
+
+  // 合并同一菜品：多个用户点了同一份菜时，数量相加、标注点餐人
+  const mergedItems = useMemo(() => {
+    if (!table || !order) return [] as { dishName: string; price: number; quantity: number; amount: number; users: string[] }[];
+    const map = new Map<string, { dishName: string; price: number; quantity: number; users: string[] }>();
+    for (const item of order.items) {
+      const user = table.participants.find((p) => p.id === item.userId);
+      const tag = user ? `${user.nickname}` : '';
+      const entry = map.get(item.dishId);
+      if (entry) {
+        entry.quantity += item.quantity;
+        if (tag && !entry.users.includes(tag)) entry.users.push(tag);
+      } else {
+        map.set(item.dishId, {
+          dishName: item.dishName,
+          price: item.price,
+          quantity: item.quantity,
+          users: tag ? [tag] : [],
+        });
+      }
+    }
+    return [...map.values()].map((m) => ({ ...m, amount: m.price * m.quantity }));
+  }, [order, table]);
+
+  const handleExport = () => {
+    if (!mergedItems.length) return;
+    const header = '菜品,单价(元),数量,金额(元),点餐人';
+    const rows = mergedItems.map((m) =>
+      [m.dishName, m.price, m.quantity, m.amount.toFixed(2), m.users.join('、')].join(',')
+    );
+    const csv = '\ufeff' + [header, ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `账单清单_${roomCode ?? 'room'}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   if (!table || !order) {
     return (
@@ -307,35 +346,20 @@ export default function BillPage() {
             <Receipt className="size-5 text-primary" />
             <h2 className="text-lg font-bold">菜品清单</h2>
             <span className="text-xs text-muted-foreground">({order.totalCount} 份)</span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-auto gap-1"
+              onClick={handleExport}
+            >
+              <Download className="size-4" />
+              导出清单
+            </Button>
           </div>
           <Card>
             <CardContent className="p-4 space-y-2">
-              {(() => {
-                // 合并同一菜品：多个用户点了同一份菜时，数量相加、标注点餐人
-                const mergedMap = new Map<
-                  string,
-                  { dishId: string; dishName: string; price: number; quantity: number; users: string[] }
-                >();
-                for (const item of order.items) {
-                  const user = table.participants.find((p) => p.id === item.userId);
-                  const tag = user ? `${user.avatar} ${user.nickname}` : '';
-                  const entry = mergedMap.get(item.dishId);
-                  if (entry) {
-                    entry.quantity += item.quantity;
-                    if (tag && !entry.users.includes(tag)) entry.users.push(tag);
-                  } else {
-                    mergedMap.set(item.dishId, {
-                      dishId: item.dishId,
-                      dishName: item.dishName,
-                      price: item.price,
-                      quantity: item.quantity,
-                      users: tag ? [tag] : [],
-                    });
-                  }
-                }
-                return [...mergedMap.values()];
-              })().map((merged) => (
-                <div key={merged.dishId} className="flex items-center gap-3 text-sm">
+              {mergedItems.map((merged) => (
+                <div key={merged.dishName} className="flex items-center gap-3 text-sm">
                   <div className="flex-1 min-w-0">
                     <div className="font-medium truncate">{merged.dishName}</div>
                     <div className="text-xs text-muted-foreground">
@@ -348,7 +372,7 @@ export default function BillPage() {
                     </div>
                   </div>
                   <span className="font-semibold tabular-nums shrink-0">
-                    ¥{(merged.price * merged.quantity).toFixed(2)}
+                    ¥{merged.amount.toFixed(2)}
                   </span>
                 </div>
               ))}
