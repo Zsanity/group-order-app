@@ -33,18 +33,17 @@ export default function DishCard({ dish, quantity, onAdd, onDecrease, disabled, 
           <div>
             <div className="flex items-start justify-between gap-2">
               <h3 className="font-semibold text-foreground truncate">{dish.name}</h3>
-              {/* 同桌已点总数（含已提交订单） */}
-              {totalQuantity > 0 && (
+              {/* 同桌已点总数（含已提交订单），有基础数量的菜品常显、带单位 */}
+              {dish.baseQuantity != null && (
                 <span
-                  className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${
+                  className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border whitespace-nowrap ${
                     overBase
                       ? 'bg-red-500/10 text-red-600 border-red-500/30'
                       : 'bg-primary/10 text-primary border-primary/20'
                   }`}
-                  title={overBase ? '已达/超过基础数量' : '同桌已点份数'}
+                  title={overBase ? '已达/超过基础数量' : '同桌已点份数（单位：串/袋/瓶/把）'}
                 >
-                  已点 {totalQuantity}
-                  {dish.baseQuantity != null ? `/${dish.baseQuantity}` : ''}
+                  已点 {totalQuantity}{dish.unit ?? ''}/{dish.baseQuantity}{dish.unit ?? ''}
                 </span>
               )}
             </div>
