@@ -15,8 +15,15 @@ interface DishCardProps {
 
 export default function DishCard({ dish, quantity, onAdd, onDecrease, disabled, totalQuantity = 0, disabledText }: DishCardProps) {
   const showTotal = disabled && totalQuantity > 0;
+  // 同桌已点总数达到/超过基础数量 → 标红提示
+  const overBase = dish.baseQuantity != null && totalQuantity >= dish.baseQuantity;
+
   return (
-    <Card className="overflow-hidden transition-all hover:shadow-md">
+    <Card
+      className={`overflow-hidden transition-all hover:shadow-md ${
+        overBase ? 'border-red-500/40 bg-red-500/[0.03]' : ''
+      }`}
+    >
       <CardContent className="p-4 flex gap-3">
         <div className="shrink-0 w-20 h-20 rounded-lg bg-muted flex items-center justify-center text-4xl">
           {dish.emoji}
@@ -26,6 +33,20 @@ export default function DishCard({ dish, quantity, onAdd, onDecrease, disabled, 
           <div>
             <div className="flex items-start justify-between gap-2">
               <h3 className="font-semibold text-foreground truncate">{dish.name}</h3>
+              {/* 同桌已点总数（含已提交订单） */}
+              {totalQuantity > 0 && (
+                <span
+                  className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${
+                    overBase
+                      ? 'bg-red-500/10 text-red-600 border-red-500/30'
+                      : 'bg-primary/10 text-primary border-primary/20'
+                  }`}
+                  title={overBase ? '已达/超过基础数量' : '同桌已点份数'}
+                >
+                  已点 {totalQuantity}
+                  {dish.baseQuantity != null ? `/${dish.baseQuantity}` : ''}
+                </span>
+              )}
             </div>
             <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{dish.description}</p>
             <div className="flex flex-wrap gap-1 mt-2">
@@ -34,6 +55,11 @@ export default function DishCard({ dish, quantity, onAdd, onDecrease, disabled, 
                   {tag}
                 </Badge>
               ))}
+              {dish.baseQuantity != null && totalQuantity >= dish.baseQuantity && (
+                <Badge className="text-[10px] h-4 px-1.5 font-normal bg-red-500/10 text-red-600 border border-red-500/30">
+                  已超基础量
+                </Badge>
+              )}
             </div>
           </div>
           <div className="flex items-center justify-between mt-2">
@@ -58,6 +84,7 @@ export default function DishCard({ dish, quantity, onAdd, onDecrease, disabled, 
                 onDecrease={onDecrease}
                 size="sm"
                 disabled={disabled}
+                accent={overBase ? 'danger' : undefined}
               />
             )}
           </div>

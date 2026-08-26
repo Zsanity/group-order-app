@@ -8,6 +8,7 @@ interface QuantityControlProps {
   onDecrease: () => void;
   size?: 'sm' | 'md';
   disabled?: boolean;
+  accent?: 'danger';
 }
 
 export default function QuantityControl({
@@ -16,9 +17,13 @@ export default function QuantityControl({
   onDecrease,
   size = 'md',
   disabled = false,
+  accent,
 }: QuantityControlProps) {
   const iconSize = size === 'sm' ? 'size-3.5' : 'size-4';
   const btnSize = size === 'sm' ? 'h-7 w-7' : 'h-8 w-8';
+  const dangerBtn = accent === 'danger'
+    ? 'bg-red-500 hover:bg-red-600 text-white shadow-red-500/30'
+    : '';
 
   if (quantity <= 0) {
     return (
@@ -29,8 +34,8 @@ export default function QuantityControl({
       >
         <Button
           size="icon"
-          variant="default"
-          className={`${btnSize} rounded-full shadow-md`}
+          variant={accent === 'danger' ? 'ghost' : 'default'}
+          className={`${btnSize} rounded-full shadow-md ${dangerBtn}`}
           onClick={onIncrease}
           disabled={disabled}
           aria-label="加一份"
@@ -66,8 +71,8 @@ export default function QuantityControl({
       </motion.span>
       <Button
         size="icon"
-        variant="default"
-        className={`${btnSize} rounded-full`}
+        variant={accent === 'danger' ? 'ghost' : 'default'}
+        className={`${btnSize} rounded-full ${dangerBtn}`}
         onClick={onIncrease}
         disabled={disabled}
         aria-label="加一份"

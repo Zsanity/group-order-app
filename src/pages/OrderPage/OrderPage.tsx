@@ -236,7 +236,16 @@ export default function OrderPage() {
                     key={dish.id}
                     dish={dish}
                     quantity={dishQuantities[dish.id] || 0}
-                    onAdd={() => addDish(dish.id, dish.name, dish.price)}
+                    onAdd={() => {
+                      const total = getDishTotalQuantity(dish.id);
+                      if (dish.baseQuantity != null && total >= dish.baseQuantity) {
+                        toast(`「${dish.name}」已达基础数量 ${dish.baseQuantity}，继续加点请确认`, {
+                          style: { background: '#ef4444', color: '#fff' },
+                          duration: 2600,
+                        });
+                      }
+                      addDish(dish.id, dish.name, dish.price);
+                    }}
                     onDecrease={() => {
                       const item = table.cartItems.find(
                         (i) => i.dishId === dish.id && i.userId === currentUserId

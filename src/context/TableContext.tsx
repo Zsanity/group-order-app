@@ -435,9 +435,13 @@ export function TableProvider({ children }: { children: ReactNode }) {
   const getDishTotalQuantity = useCallback(
     (dishId: string): number => {
       if (!table) return 0
-      return table.cartItems
+      const cart = table.cartItems
         .filter((i) => i.dishId === dishId)
-        .reduce((sum, item) => sum + item.quantity, 0)
+        .reduce((sum, i) => sum + i.quantity, 0)
+      const submitted = table.submitted.reduce((sum, o) => {
+        return sum + o.items.filter((i) => i.dishId === dishId).reduce((x, i) => x + i.quantity, 0)
+      }, 0)
+      return cart + submitted
     },
     [table]
   )
