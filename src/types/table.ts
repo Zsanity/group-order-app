@@ -29,6 +29,7 @@ export interface IOrder {
 
 export interface ITableState {
   roomCode: string // 4 位房间码
+  creatorId: string // 餐桌创建者（有移除参与者/订单的权限）
   participants: IParticipant[]
   cartItems: ICartItem[] // 未提交的活跃购物车
   submitted: IOrder[] // 各用户已提交的订单（每人一条，互不影响）

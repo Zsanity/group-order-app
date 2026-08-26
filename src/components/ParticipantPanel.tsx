@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { Copy, UserPlus, Users, LogOut, ChevronRight } from 'lucide-react';
+import { Copy, UserPlus, Users, LogOut, ChevronRight, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,7 +17,7 @@ interface ParticipantPanelProps {
 }
 
 export default function ParticipantPanel({ open, onClose, onAddParticipant }: ParticipantPanelProps) {
-  const { table, currentUserId, setCurrentUser, leaveTable } = useTable();
+  const { table, currentUserId, account, setCurrentUser, leaveTable, removeParticipant } = useTable();
 
   const copyRoomCode = async () => {
     if (!table) return;
@@ -41,6 +41,17 @@ export default function ParticipantPanel({ open, onClose, onAddParticipant }: Pa
       onClose();
     }
   };
+
+  // 创建者权限：以创建餐桌的账号为准
+  const isCreator = !!(table && account && table.creatorId === account.id);
+
+  const handleRemoveParticipant = (p: { id: string; nickname: string }) => {
+    if (window.confirm(`确定要移除「${p.nickname}」吗？将一并删除其购物车和已提交的订单。`)) {
+      removeParticipant(p.id);
+      toast.success(`已移除 ${p.nickname}`);
+    }
+  };
+
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -123,6 +134,19 @@ export default function ParticipantPanel({ open, onClose, onAddParticipant }: Pa
                         </div>
                         {!isCurrent && (
                           <ChevronRight className="size-4 text-muted-foreground shrink-0" />
+                        )}
+                        {isCreator && p.id !== table.creatorId && (
+                          <button
+                            className="size-8 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 flex items-center justify-center shrink-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveParticipant(p);
+                            }}
+                            aria-label={`移除 ${p.nickname}`}
+                            title="移除该参与者"
+                          >
+                            <Trash2 className="size-4" />
+                          </button>
                         )}
                       </motion.div>
                     );

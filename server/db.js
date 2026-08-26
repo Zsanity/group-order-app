@@ -21,7 +21,8 @@ db.exec(`
   );
   CREATE TABLE IF NOT EXISTS rooms (
     roomCode TEXT PRIMARY KEY,
-    createdAt INTEGER NOT NULL
+    createdAt INTEGER NOT NULL,
+    creatorId TEXT
   );
   CREATE TABLE IF NOT EXISTS participants (
     roomCode TEXT NOT NULL,
@@ -67,6 +68,12 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_submitted_room ON submitted_orders(roomCode);
   CREATE INDEX IF NOT EXISTS idx_submitted_user ON submitted_orders(userId);
 `)
+// 兼容旧库：为已存在的 rooms 表补 creatorId 列
+try {
+  db.exec('ALTER TABLE rooms ADD COLUMN creatorId TEXT')
+} catch {
+  /* 列已存在则忽略 */
+}
 
 const AVATAR_POOL = ['🍎', '🍊', '🍋', '🍇', '🍓', '🍑', '🥝', '🍒', '🍍', '🥑', '🍉', '🥭']
 
@@ -132,7 +139,7 @@ export function saveRoom(room) {
   const d3 = db.prepare('DELETE FROM cart_items WHERE roomCode=?')
   const d4 = db.prepare('DELETE FROM participants WHERE roomCode=?')
   const d5 = db.prepare('DELETE FROM rooms WHERE roomCode=?')
-  const insRoom = db.prepare('INSERT INTO rooms (roomCode, createdAt) VALUES (?,?)')
+  const insRoom = db.prepare('INSERT INTO rooms (roomCode, createdAt, creatorId) VALUES (?,?,?)')
   const insP = db.prepare('INSERT INTO participants (roomCode,userId,nickname,avatar,joinedAt) VALUES (?,?,?,?,?)')
   const insC = db.prepare('INSERT INTO cart_items (id,roomCode,userId,dishId,dishName,price,quantity,remark,addedAt) VALUES (?,?,?,?,?,?,?,?,?)')
   const insO = db.prepare('INSERT INTO submitted_orders (id,roomCode,userId,orderNo,totalAmount,totalCount,createdAt) VALUES (?,?,?,?,?,?,?)')
@@ -140,7 +147,7 @@ export function saveRoom(room) {
   try {
     db.exec('BEGIN')
     d1.run(rc); d2.run(rc); d3.run(rc); d4.run(rc); d5.run(rc)
-    insRoom.run(rc, room.createdAt)
+    insRoom.run(rc, room.createdAt, room.creatorId || null)
     for (const p of room.participants) insP.run(rc, p.id, p.nickname, p.avatar, p.joinedAt)
     for (const it of room.cartItems) {
       insC.run(it.id, rc, it.userId, it.dishId, it.dishName, it.price, it.quantity, it.remark || null, it.addedAt)
@@ -162,7 +169,7 @@ export function saveRoom(room) {
 
 export function loadAllRooms() {
   const rooms = []
-  const roomRows = db.prepare('SELECT roomCode, createdAt FROM rooms').all()
+  const roomRows = db.prepare('SELECT roomCode, createdAt, creatorId FROM rooms').all()
   const selP = db.prepare('SELECT userId,nickname,avatar,joinedAt FROM participants WHERE roomCode=?')
   const selC = db.prepare('SELECT id,userId,dishId,dishName,price,quantity,remark,addedAt FROM cart_items WHERE roomCode=?')
   const selO = db.prepare('SELECT id,userId,orderNo,totalAmount,totalCount,createdAt FROM submitted_orders WHERE roomCode=?')
@@ -179,7 +186,7 @@ export function loadAllRooms() {
       totalCount: o.totalCount,
       items: selI.all(o.id).map((i) => ({ userId: i.userId, dishId: i.dishId, dishName: i.dishName, price: i.price, quantity: i.quantity, remark: i.remark })),
     }))
-    rooms.push({ roomCode: rc, participants, cartItems, submitted, createdAt: rr.createdAt })
+    rooms.push({ roomCode: rc, creatorId: rr.creatorId || null, participants, cartItems, submitted, createdAt: rr.createdAt })
   }
   return rooms
 }

@@ -43,6 +43,7 @@ export function createRoom(userId, nickname) {
   }
   const room = {
     roomCode,
+    creatorId: user.id,
     participants: [user],
     cartItems: [],
     submitted: [], // 各用户已提交的订单快照（每人一条）
@@ -103,6 +104,28 @@ export function addParticipant(room, nickname) {
   }
   room.participants.push(participant)
   return { participant, state: room }
+}
+
+// ---- 创建者权限操作 ----
+
+// 创建者移除参与者（连同其购物车与已提交订单）
+export function removeParticipant(room, { targetUserId }, operatorId) {
+  if (operatorId !== room.creatorId) return { error: 'NOT_CREATOR' }
+  if (!targetUserId || targetUserId === operatorId) return { error: 'INVALID_TARGET' }
+  if (!room.participants.some((p) => p.id === targetUserId)) return { error: 'PARTICIPANT_NOT_FOUND' }
+  room.participants = room.participants.filter((p) => p.id !== targetUserId)
+  room.cartItems = room.cartItems.filter((i) => i.userId !== targetUserId)
+  room.submitted = room.submitted.filter((s) => s.userId !== targetUserId)
+  return { state: room }
+}
+
+// 创建者移除某参与者提交的订单
+export function removeOrder(room, { targetUserId }, operatorId) {
+  if (operatorId !== room.creatorId) return { error: 'NOT_CREATOR' }
+  if (!targetUserId) return { error: 'INVALID_TARGET' }
+  if (!room.submitted.some((s) => s.userId === targetUserId)) return { error: 'ORDER_NOT_FOUND' }
+  room.submitted = room.submitted.filter((s) => s.userId !== targetUserId)
+  return { state: room }
 }
 
 // ---- 购物车操作 ----
@@ -220,10 +243,16 @@ export function applyIntent(room, msg, userId) {
       r = cartClear(room, msg)
       break
     case 'order:submit':
-      r = submitOrder(room, userId)
+      r = submitOrder(room, msg.userId || userId)
       break
     case 'order:cancel':
-      r = cancelOrder(room, userId)
+      r = cancelOrder(room, msg.userId || userId)
+      break
+    case 'order:remove':
+      r = removeOrder(room, msg, userId)
+      break
+    case 'participant:remove':
+      r = removeParticipant(room, msg, userId)
       break
     default:
       return { error: 'UNKNOWN_TYPE' }

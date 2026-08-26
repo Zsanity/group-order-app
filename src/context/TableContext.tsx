@@ -77,6 +77,8 @@ interface TableContextValue {
   clearCart: () => void
   submitOrder: () => void
   cancelOrder: () => void
+  removeParticipant: (targetUserId: string) => void
+  removeOrder: (targetUserId: string) => void
   leaveTable: () => void
   getUserTotal: (userId: string) => number
   getTotalAmount: () => number
@@ -213,6 +215,11 @@ export function TableProvider({ children }: { children: ReactNode }) {
       }
       if (msg.type === 'state' && msg.state) {
         setTable(msg.state)
+        // 若当前身份已被创建者移除，自动切回餐桌创建者
+        const uid = currentUserIdRef.current
+        if (uid && !msg.state.participants.some((p) => p.id === uid)) {
+          setCurrentUserIdState(msg.state.creatorId || (msg.state.participants[0]?.id ?? null))
+        }
         // 解析待处理的 addParticipant
         const pending = pendingAddsRef.current
         if (pending.size > 0) {
@@ -391,11 +398,22 @@ export function TableProvider({ children }: { children: ReactNode }) {
   }, [sendIntent])
 
   const submitOrder = useCallback(() => {
-    sendIntent({ type: 'order:submit' })
+    // 携带当前选中用户，确保切换身份后提交作用在正确的用户上
+    sendIntent({ type: 'order:submit', userId: currentUserIdRef.current })
   }, [sendIntent])
 
   const cancelOrder = useCallback(() => {
-    sendIntent({ type: 'order:cancel' })
+    sendIntent({ type: 'order:cancel', userId: currentUserIdRef.current })
+  }, [sendIntent])
+
+  // 创建者移除参与者（服务器校验权限）
+  const removeParticipant = useCallback((targetUserId: string) => {
+    sendIntent({ type: 'participant:remove', targetUserId })
+  }, [sendIntent])
+
+  // 创建者移除某参与者提交的订单（服务器校验权限）
+  const removeOrder = useCallback((targetUserId: string) => {
+    sendIntent({ type: 'order:remove', targetUserId })
   }, [sendIntent])
 
   const leaveTable = useCallback(() => {
@@ -483,6 +501,8 @@ export function TableProvider({ children }: { children: ReactNode }) {
     clearCart,
     submitOrder,
     cancelOrder,
+    removeParticipant,
+    removeOrder,
     leaveTable,
     getUserTotal,
     getTotalAmount,

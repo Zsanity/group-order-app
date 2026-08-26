@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, Users, Receipt, CreditCard, UserCheck, SplitSquareVertical, RotateCcw, Download } from 'lucide-react';
+import { ChevronLeft, Users, Receipt, CreditCard, UserCheck, SplitSquareVertical, RotateCcw, Download, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -22,13 +23,22 @@ import { useTable } from '@/context/TableContext';
 export default function BillPage() {
   const navigate = useNavigate();
   const { roomCode } = useParams<{ roomCode: string }>();
-  const { table, cancelOrder } = useTable();
+  const { table, account, cancelOrder, removeOrder } = useTable();
 
   const [splitMode, setSplitMode] = useState<'aa' | 'perPerson'>('perPerson');
   const [cancelOpen, setCancelOpen] = useState(false);
 
   const participantCount = table?.participants.length ?? 0;
   const orders = table?.submitted ?? [];
+  // 创建者权限：以创建餐桌的账号为准
+  const isCreator = !!(table && account && table.creatorId === account.id);
+
+  const handleRemoveOrder = (p: { id: string; nickname: string }) => {
+    if (window.confirm(`确定要移除「${p.nickname}」的订单吗？`)) {
+      removeOrder(p.id);
+      toast.success(`已移除 ${p.nickname} 的订单`);
+    }
+  };
 
   const order = useMemo(() => {
     if (orders.length === 0) return null;
@@ -249,6 +259,16 @@ export default function BillPage() {
                                 {submitted ? `点了 ${count} 份菜` : '还没提交'}
                               </div>
                             </div>
+                            {isCreator && submitted && p.id !== table.creatorId && (
+                              <button
+                                className="size-8 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 flex items-center justify-center shrink-0"
+                                onClick={() => handleRemoveOrder(p)}
+                                aria-label={`移除 ${p.nickname} 的订单`}
+                                title="移除该参与者的订单"
+                              >
+                                <Trash2 className="size-4" />
+                              </button>
+                            )}
                             <div className="text-right">
                               {submitted ? (
                                 <>
