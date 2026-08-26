@@ -18,7 +18,7 @@ import CartPanel from '@/components/CartPanel';
 import ParticipantPanel from '@/components/ParticipantPanel';
 import SubmitConfirmDialog from '@/components/SubmitConfirmDialog';
 import { useTable } from '@/context/TableContext';
-import { MOCK_CATEGORIES, MOCK_DISHES, MENU_NOTE } from '@/data/menu';
+import { getMinPortionCount, MOCK_CATEGORIES, MOCK_DISHES, MENU_NOTE } from '@/data/menu';
 
 export default function OrderPage() {
   const navigate = useNavigate();
@@ -237,9 +237,9 @@ export default function OrderPage() {
                     dish={dish}
                     quantity={dishQuantities[dish.id] || 0}
                     onAdd={() => {
-                      const total = getDishTotalQuantity(dish.id);
-                      if (dish.baseQuantity != null && total >= dish.baseQuantity) {
-                        toast(`「${dish.name}」已达基础数量 ${dish.baseQuantity}，继续加点请确认`, {
+                      const totalUnits = getDishTotalQuantity(dish.id) * getMinPortionCount(dish);
+                      if (dish.baseQuantity != null && totalUnits >= dish.baseQuantity) {
+                        toast(`「${dish.name}」已达基础数量 ${dish.baseQuantity}${dish.unit ?? ''}，继续加点请确认`, {
                           style: { background: '#ef4444', color: '#fff' },
                           duration: 2600,
                         });

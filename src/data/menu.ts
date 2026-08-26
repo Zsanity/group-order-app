@@ -113,3 +113,18 @@ export const MOCK_DISHES: IDish[] = [
   { id: 't15', name: '一次性盘子', price: 0.6, description: '分餐盛放', category: 'tools', tags: ['耗材'], emoji: '🍽️', spec: '个' },
   { id: 't16', name: '一次性筷子', price: 0.5, description: '方便卫生', category: 'tools', tags: ['耗材'], emoji: '🥢', spec: '双' },
 ]
+
+
+/**
+ * 计算每个菜品的“每份最小串数”。
+ * 串类按 spec 取小值（如 "15-16串" -> 15，"10-12串" -> 10）；
+ * 袋/瓶/把等耗材每份为 1。
+ */
+export function getMinPortionCount(dish: IDish): number {
+  if (dish.unit === '串') {
+    const m = dish.spec?.match(/(\d+)\s*[-~至]\s*(\d+)\s*串/);
+    if (m) return parseInt(m[1], 10);
+    return 1; // 规格为 "串"（如鱿鱼 ¥5/串）时，1份=1串
+  }
+  return 1; // 袋/瓶/把
+}

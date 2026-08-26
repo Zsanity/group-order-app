@@ -1,7 +1,7 @@
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import QuantityControl from '@/components/QuantityControl';
-import type { IDish } from '@/data/menu';
+import { getMinPortionCount, type IDish } from '@/data/menu';
 
 interface DishCardProps {
   dish: IDish
@@ -15,8 +15,12 @@ interface DishCardProps {
 
 export default function DishCard({ dish, quantity, onAdd, onDecrease, disabled, totalQuantity = 0, disabledText }: DishCardProps) {
   const showTotal = disabled && totalQuantity > 0;
-  // 同桌已点总数达到/超过基础数量 → 标红提示
-  const overBase = dish.baseQuantity != null && totalQuantity >= dish.baseQuantity;
+  // 每份最小串数（串类取 spec 小值，耗材为 1）
+  const perPortion = getMinPortionCount(dish);
+  // 已点总数换算为串/袋/瓶/把：份数 × 每份最小数量
+  const totalUnits = totalQuantity * perPortion;
+  // 同桌已点（按单位）达到/超过基础数量 → 标红提示
+  const overBase = dish.baseQuantity != null && totalUnits >= dish.baseQuantity;
 
   return (
     <Card
@@ -43,7 +47,7 @@ export default function DishCard({ dish, quantity, onAdd, onDecrease, disabled, 
                   }`}
                   title={overBase ? '已达/超过基础数量' : '同桌已点份数（单位：串/袋/瓶/把）'}
                 >
-                  已点 {totalQuantity}{dish.unit ?? ''}/{dish.baseQuantity}{dish.unit ?? ''}
+                  已点 {totalUnits}{dish.unit ?? ''}/{dish.baseQuantity}{dish.unit ?? ''}
                 </span>
               )}
             </div>
@@ -54,7 +58,7 @@ export default function DishCard({ dish, quantity, onAdd, onDecrease, disabled, 
                   {tag}
                 </Badge>
               ))}
-              {dish.baseQuantity != null && totalQuantity >= dish.baseQuantity && (
+              {dish.baseQuantity != null && overBase && (
                 <Badge className="text-[10px] h-4 px-1.5 font-normal bg-red-500/10 text-red-600 border border-red-500/30">
                   已超基础量
                 </Badge>
