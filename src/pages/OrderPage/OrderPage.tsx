@@ -32,8 +32,8 @@ export default function OrderPage() {
     updateQuantity,
     addParticipant,
     submitOrder,
-    getTotalAmount,
-    getTotalCount,
+    getUserTotal,
+    getMyCount,
     getDishTotalQuantity,
   } = useTable();
 
@@ -66,8 +66,8 @@ export default function OrderPage() {
     return result;
   }, [table, currentUserId]);
 
-  const totalCount = getTotalCount();
-  const totalAmount = getTotalAmount();
+  const totalCount = getMyCount();
+  const totalAmount = currentUserId ? getUserTotal(currentUserId) : 0;
 
   const handleAddUser = async () => {
     const name = newNickname.trim();
@@ -128,22 +128,20 @@ export default function OrderPage() {
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">房间码</span>
               <span className="font-bold text-primary tracking-wider">{table.roomCode}</span>
-              {table.submitted.length > 0 && (
-                <div className="flex items-center gap-1.5">
-                  {mySubmitted && (
-                    <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
-                      已下单
-                    </Badge>
-                  )}
-                  <button
-                    className="text-[11px] text-primary hover:text-primary/80 font-medium inline-flex items-center gap-0.5 transition-colors"
-                    onClick={handleViewBill}
-                  >
-                    <Receipt className="size-3" />
-                    账单
-                  </button>
-                </div>
-              )}
+              <div className="flex items-center gap-1.5">
+                {mySubmitted && (
+                  <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
+                    已下单
+                  </Badge>
+                )}
+                <button
+                  className="text-[11px] text-primary hover:text-primary/80 font-medium inline-flex items-center gap-0.5 transition-colors"
+                  onClick={handleViewBill}
+                >
+                  <Receipt className="size-3" />
+                  账单
+                </button>
+              </div>
             </div>
           </div>
 
@@ -266,7 +264,7 @@ export default function OrderPage() {
 
       {/* 底部购物车栏 */}
       <AnimatePresence>
-        {totalCount > 0 && (
+        {(totalCount > 0 || mySubmitted) && (
           <motion.div
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}

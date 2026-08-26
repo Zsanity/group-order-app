@@ -74,12 +74,14 @@ interface TableContextValue {
   updateQuantity: (itemId: string, quantity: number) => void
   updateRemark: (itemId: string, remark: string) => void
   removeItem: (itemId: string) => void
+  clearCart: () => void
   submitOrder: () => void
   cancelOrder: () => void
   leaveTable: () => void
   getUserTotal: (userId: string) => number
   getTotalAmount: () => number
   getTotalCount: () => number
+  getMyCount: () => number
   getDishTotalQuantity: (dishId: string) => number
 }
 
@@ -381,6 +383,13 @@ export function TableProvider({ children }: { children: ReactNode }) {
     [sendIntent]
   )
 
+  // 一键清空：清空当前用户自己的购物车
+  const clearCart = useCallback(() => {
+    const uid = currentUserIdRef.current
+    if (!uid) return
+    sendIntent({ type: 'cart:clear', userId: uid })
+  }, [sendIntent])
+
   const submitOrder = useCallback(() => {
     sendIntent({ type: 'order:submit' })
   }, [sendIntent])
@@ -432,6 +441,14 @@ export function TableProvider({ children }: { children: ReactNode }) {
     return table.cartItems.reduce((sum, item) => sum + item.quantity, 0)
   }, [table])
 
+  // 当前用户购物车份数（仅自己的菜品）
+  const getMyCount = useCallback((): number => {
+    if (!table || !currentUserIdRef.current) return 0
+    return table.cartItems
+      .filter((item) => item.userId === currentUserIdRef.current)
+      .reduce((sum, item) => sum + item.quantity, 0)
+  }, [table])
+
   const getDishTotalQuantity = useCallback(
     (dishId: string): number => {
       if (!table) return 0
@@ -463,12 +480,14 @@ export function TableProvider({ children }: { children: ReactNode }) {
     updateQuantity,
     updateRemark,
     removeItem,
+    clearCart,
     submitOrder,
     cancelOrder,
     leaveTable,
     getUserTotal,
     getTotalAmount,
     getTotalCount,
+    getMyCount,
     getDishTotalQuantity,
   }
 

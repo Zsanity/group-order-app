@@ -310,35 +310,48 @@ export default function BillPage() {
           </div>
           <Card>
             <CardContent className="p-4 space-y-2">
-              {order.items.map((item) => {
-                const user = table.participants.find((p) => p.id === item.userId);
-                return (
-                  <div
-                    key={item.id}
-                    className="flex items-center gap-3 text-sm"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{item.dishName}</div>
-                      <div className="text-xs text-muted-foreground">
-                        ¥{item.price} × {item.quantity}
-                        {user && (
-                          <span className="ml-2">
-                            {user.avatar} {user.nickname}
-                          </span>
-                        )}
-                      </div>
-                      {item.remark && (
-                        <div className="text-[11px] text-primary/80 bg-primary/5 inline-block px-2 py-0.5 rounded mt-1">
-                          💬 {item.remark}
-                        </div>
+              {(() => {
+                // 合并同一菜品：多个用户点了同一份菜时，数量相加、标注点餐人
+                const mergedMap = new Map<
+                  string,
+                  { dishId: string; dishName: string; price: number; quantity: number; users: string[] }
+                >();
+                for (const item of order.items) {
+                  const user = table.participants.find((p) => p.id === item.userId);
+                  const tag = user ? `${user.avatar} ${user.nickname}` : '';
+                  const entry = mergedMap.get(item.dishId);
+                  if (entry) {
+                    entry.quantity += item.quantity;
+                    if (tag && !entry.users.includes(tag)) entry.users.push(tag);
+                  } else {
+                    mergedMap.set(item.dishId, {
+                      dishId: item.dishId,
+                      dishName: item.dishName,
+                      price: item.price,
+                      quantity: item.quantity,
+                      users: tag ? [tag] : [],
+                    });
+                  }
+                }
+                return [...mergedMap.values()];
+              })().map((merged) => (
+                <div key={merged.dishId} className="flex items-center gap-3 text-sm">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate">{merged.dishName}</div>
+                    <div className="text-xs text-muted-foreground">
+                      ¥{merged.price} × {merged.quantity}
+                      {merged.users.length > 0 && (
+                        <span className="ml-2">
+                          ({merged.users.join('、')})
+                        </span>
                       )}
                     </div>
-                    <span className="font-semibold tabular-nums shrink-0">
-                      ¥{(item.price * item.quantity).toFixed(2)}
-                    </span>
                   </div>
-                );
-              })}
+                  <span className="font-semibold tabular-nums shrink-0">
+                    ¥{(merged.price * merged.quantity).toFixed(2)}
+                  </span>
+                </div>
+              ))}
             </CardContent>
           </Card>
         </motion.div>

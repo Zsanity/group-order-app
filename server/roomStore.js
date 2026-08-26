@@ -153,6 +153,13 @@ export function cartUpdateRemark(room, { itemId, remark }) {
   return { state: room }
 }
 
+// 一键清空：仅清空当前用户自己的购物车（不影响他人）
+export function cartClear(room, { userId }) {
+  if (!userId) return { error: 'MISSING_USER' }
+  room.cartItems = room.cartItems.filter((i) => i.userId !== userId)
+  return { state: room }
+}
+
 // ---- 订单操作（按用户各自提交，互不影响）----
 
 export function submitOrder(room, userId) {
@@ -201,6 +208,9 @@ export function applyIntent(room, msg, userId) {
       break
     case 'cart:updateRemark':
       r = cartUpdateRemark(room, msg)
+      break
+    case 'cart:clear':
+      r = cartClear(room, msg)
       break
     case 'order:submit':
       r = submitOrder(room, userId)
