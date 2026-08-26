@@ -185,8 +185,15 @@ export function cancelOrder(room, userId) {
   const removed = room.submitted.find((s) => s.userId === userId)
   if (!removed) return { error: 'NOT_SUBMITTED' }
   room.submitted = room.submitted.filter((s) => s.userId !== userId)
-  // 把该用户的菜品退回活跃购物车，方便重新修改
-  room.cartItems = room.cartItems.concat(removed.items.map((i) => ({ ...i })))
+  // 把该用户的菜品退回活跃购物车，方便重新修改。
+  // 已提交快照不含购物车所需的 id/addedAt，需补全，否则持久化时 SQLite 绑定 undefined 会崩溃。
+  room.cartItems = room.cartItems.concat(
+    removed.items.map((i) => ({
+      ...i,
+      id: genId('ci_'),
+      addedAt: Date.now(),
+    }))
+  )
   return { state: room }
 }
 
