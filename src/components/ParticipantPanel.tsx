@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useTable } from '@/context/TableContext';
+import { IS_TEST_BUILD, ALLOW_SWITCH_PERSPECTIVE } from '@/config';
 
 interface ParticipantPanelProps {
   open: boolean
@@ -60,6 +61,11 @@ export default function ParticipantPanel({ open, onClose, onAddParticipant }: Pa
           <DialogTitle className="flex items-center gap-2">
             <Users className="size-5 text-primary" />
             餐桌信息
+            {IS_TEST_BUILD && (
+              <span className="text-[10px] bg-amber-500/15 text-amber-600 px-1.5 py-0.5 rounded-full shrink-0 ml-auto">
+                测试版
+              </span>
+            )}
           </DialogTitle>
         </DialogHeader>
 
@@ -110,10 +116,12 @@ export default function ParticipantPanel({ open, onClose, onAddParticipant }: Pa
                         className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
                           isCurrent
                             ? 'border-primary/30 bg-primary/5'
-                            : 'border-border hover:bg-muted/40 cursor-pointer'
+                            : ALLOW_SWITCH_PERSPECTIVE
+                              ? 'border-border hover:bg-muted/40 cursor-pointer'
+                              : 'border-border'
                         }`}
                         onClick={() => {
-                          if (!isCurrent) {
+                          if (ALLOW_SWITCH_PERSPECTIVE && !isCurrent) {
                             setCurrentUser(p.id);
                             toast.success(`已切换到 ${p.nickname} 的视角`);
                           }
@@ -132,7 +140,7 @@ export default function ParticipantPanel({ open, onClose, onAddParticipant }: Pa
                             )}
                           </div>
                         </div>
-                        {!isCurrent && (
+                        {ALLOW_SWITCH_PERSPECTIVE && !isCurrent && (
                           <ChevronRight className="size-4 text-muted-foreground shrink-0" />
                         )}
                         {isCreator && p.id !== table.creatorId && (
