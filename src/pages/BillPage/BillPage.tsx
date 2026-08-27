@@ -26,8 +26,10 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { useTable } from '@/context/TableContext';
+import { getDishUnit } from '@/data/menu';
 
 interface MergedItem {
+  dishId: string;
   dishName: string;
   price: number;
   quantity: number;
@@ -39,7 +41,7 @@ interface MergedItem {
 interface UserItemDetail {
   avatar: string;
   nickname: string;
-  items: { dishName: string; price: number; quantity: number }[];
+  items: { dishId: string; dishName: string; price: number; quantity: number }[];
 }
 
 export default function BillPage() {
@@ -107,7 +109,7 @@ export default function BillPage() {
   // 合并同一菜品：多个用户点了同一份菜时，数量相加、记录每位用户的数量
   const mergedItems = useMemo(() => {
     if (!table || !order) return [] as MergedItem[];
-    const map = new Map<string, { dishName: string; price: number; quantity: number; perUser: Record<string, number> }>();
+    const map = new Map<string, { dishId: string; dishName: string; price: number; quantity: number; perUser: Record<string, number> }>();
     for (const item of order.items) {
       const user = table.participants.find((p) => p.id === item.userId);
       const tag = user ? `${user.nickname}` : '';
@@ -117,6 +119,7 @@ export default function BillPage() {
         if (tag) entry.perUser[tag] = (entry.perUser[tag] || 0) + item.quantity;
       } else {
         map.set(item.dishId, {
+          dishId: item.dishId,
           dishName: item.dishName,
           price: item.price,
           quantity: item.quantity,
@@ -125,6 +128,7 @@ export default function BillPage() {
       }
     }
     return [...map.values()].map((m) => ({
+      dishId: m.dishId,
       dishName: m.dishName,
       price: m.price,
       quantity: m.quantity,
@@ -139,11 +143,11 @@ export default function BillPage() {
     const p = table?.participants.find((x) => x.id === userId);
     if (!p) return null;
     const items = orders.flatMap((o) => o.items).filter((i) => i.userId === userId);
-    const merged = new Map<string, { dishName: string; price: number; quantity: number }>();
+    const merged = new Map<string, { dishId: string; dishName: string; price: number; quantity: number }>();
     for (const it of items) {
       const e = merged.get(it.dishId);
       if (e) e.quantity += it.quantity;
-      else merged.set(it.dishId, { dishName: it.dishName, price: it.price, quantity: it.quantity });
+      else merged.set(it.dishId, { dishId: it.dishId, dishName: it.dishName, price: it.price, quantity: it.quantity });
     }
     return { avatar: p.avatar, nickname: p.nickname, items: [...merged.values()] };
   };
@@ -229,7 +233,7 @@ export default function BillPage() {
               <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-primary-foreground/80">
                 <div>
                   <span className="opacity-70">菜品：</span>
-                  <span className="font-medium">{order.totalCount} 份</span>
+                  <span className="font-medium">{order.totalCount} 串</span>
                 </div>
                 <div>
                   <span className="opacity-70">时间：</span>
@@ -301,7 +305,7 @@ export default function BillPage() {
                             <div className="flex-1 min-w-0">
                               <div className="font-semibold">{p.nickname}</div>
                               <div className="text-xs text-muted-foreground">
-                                {submitted ? `点了 ${count} 份菜` : '还没提交'}
+                                {submitted ? `点了 ${count} 串` : '还没提交'}
                               </div>
                             </div>
                             {isCreator && submitted && p.id !== table.creatorId && (
@@ -418,7 +422,7 @@ export default function BillPage() {
           <div className="flex items-center gap-2 mb-3">
             <Receipt className="size-5 text-primary" />
             <h2 className="text-lg font-bold">菜品清单</h2>
-            <span className="text-xs text-muted-foreground">({order.totalCount} 份)</span>
+            <span className="text-xs text-muted-foreground">({order.totalCount} 串)</span>
             <Button
               variant="outline"
               size="sm"
@@ -437,6 +441,7 @@ export default function BillPage() {
                     <div className="font-medium truncate">{merged.dishName}</div>
                     <div className="text-xs text-muted-foreground">
                       ¥{merged.price} × {merged.quantity}
+                      {getDishUnit(merged.dishId)}
                       {merged.users.length > 0 && (
                         <span className="ml-2">
                           ({merged.users.join('、')})
@@ -519,7 +524,7 @@ export default function BillPage() {
               </DialogTitle>
               {dishDetail && (
                 <DialogDescription>
-                  共点 {dishDetail.quantity} 份 · ¥{dishDetail.amount.toFixed(2)}
+                  共点 {dishDetail.quantity} {getDishUnit(dishDetail.dishId)} · ¥{dishDetail.amount.toFixed(2)}
                 </DialogDescription>
               )}
             </DialogHeader>
@@ -532,7 +537,7 @@ export default function BillPage() {
                   >
                     <span className="font-medium">{u.nickname}</span>
                     <span className="tabular-nums text-muted-foreground">
-                      {u.quantity} 份 · ¥{(u.quantity * dishDetail.price).toFixed(2)}
+                      {u.quantity} {getDishUnit(dishDetail.dishId)} · ¥{(u.quantity * dishDetail.price).toFixed(2)}
                     </span>
                   </div>
                 ))
@@ -553,7 +558,7 @@ export default function BillPage() {
               </DialogTitle>
               {userDetail && userDetail.items.length > 0 && (
                 <DialogDescription>
-                  共 {userDetail.items.reduce((s, i) => s + i.quantity, 0)} 份
+                  共 {userDetail.items.reduce((s, i) => s + i.quantity, 0)} 串
                 </DialogDescription>
               )}
             </DialogHeader>
@@ -570,7 +575,7 @@ export default function BillPage() {
                         ¥{(it.price * it.quantity).toFixed(2)}
                       </div>
                       <div className="text-[10px] text-muted-foreground">
-                        ¥{it.price} × {it.quantity} 份
+                        ¥{it.price} × {it.quantity} {getDishUnit(it.dishId)}
                       </div>
                     </div>
                   </div>

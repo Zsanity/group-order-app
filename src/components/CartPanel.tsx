@@ -24,6 +24,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useTable } from '@/context/TableContext';
+import { getDishUnit } from '@/data/menu';
 import type { ICartItem } from '@/types/table';
 
 interface CartPanelProps {
@@ -112,11 +113,11 @@ export default function CartPanel({ open, onClose, onSubmit }: CartPanelProps) {
                 </>
               )}
               <Badge variant="secondary" className="ml-1">
-                {myCount} 份
+                {myCount} 串
               </Badge>
             </DialogTitle>
             <DialogDescription>
-              仅展示自己点的菜品 · 共 {myCount} 份 · 总计{' '}
+              仅展示自己点的菜品 · 共 {myCount} 串 · 总计{' '}
               <span className="text-primary font-semibold">¥{myAmount.toFixed(2)}</span>
             </DialogDescription>
           </DialogHeader>
@@ -150,6 +151,7 @@ export default function CartPanel({ open, onClose, onSubmit }: CartPanelProps) {
                           <div className="font-medium text-sm truncate">{item.dishName}</div>
                           <div className="text-xs text-muted-foreground">
                             ¥{item.price} × {item.quantity}
+                            {getDishUnit(item.dishId)}
                           </div>
                         </div>
 
@@ -232,7 +234,7 @@ export default function CartPanel({ open, onClose, onSubmit }: CartPanelProps) {
             <DialogFooter className="px-6 py-4 border-t">
               <div className="w-full flex items-center justify-between gap-2">
                 <div className="text-sm text-muted-foreground">
-                  共 {myCount} 份
+                  共 {myCount} 串
                   <span className="ml-2 text-lg font-bold text-primary">
                     ¥{myAmount.toFixed(2)}
                   </span>
