@@ -1,12 +1,19 @@
 import { useState, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, Users, Receipt, CreditCard, UserCheck, SplitSquareVertical, RotateCcw, Download, Trash2 } from 'lucide-react';
+import { ChevronLeft, Users, Receipt, CreditCard, UserCheck, SplitSquareVertical, RotateCcw, Download, Trash2, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,6 +27,21 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useTable } from '@/context/TableContext';
 
+interface MergedItem {
+  dishName: string;
+  price: number;
+  quantity: number;
+  amount: number;
+  users: string[];
+  perUser: { nickname: string; quantity: number }[];
+}
+
+interface UserItemDetail {
+  avatar: string;
+  nickname: string;
+  items: { dishName: string; price: number; quantity: number }[];
+}
+
 export default function BillPage() {
   const navigate = useNavigate();
   const { roomCode } = useParams<{ roomCode: string }>();
@@ -27,6 +49,8 @@ export default function BillPage() {
 
   const [splitMode, setSplitMode] = useState<'aa' | 'perPerson'>('perPerson');
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [dishDetail, setDishDetail] = useState<MergedItem | null>(null);
+  const [userDetail, setUserDetail] = useState<UserItemDetail | null>(null);
 
   const participantCount = table?.participants.length ?? 0;
   const orders = table?.submitted ?? [];
@@ -80,28 +104,49 @@ export default function BillPage() {
     return result;
   }, [table, orders]);
 
-  // 合并同一菜品：多个用户点了同一份菜时，数量相加、标注点餐人
+  // 合并同一菜品：多个用户点了同一份菜时，数量相加、记录每位用户的数量
   const mergedItems = useMemo(() => {
-    if (!table || !order) return [] as { dishName: string; price: number; quantity: number; amount: number; users: string[] }[];
-    const map = new Map<string, { dishName: string; price: number; quantity: number; users: string[] }>();
+    if (!table || !order) return [] as MergedItem[];
+    const map = new Map<string, { dishName: string; price: number; quantity: number; perUser: Record<string, number> }>();
     for (const item of order.items) {
       const user = table.participants.find((p) => p.id === item.userId);
       const tag = user ? `${user.nickname}` : '';
       const entry = map.get(item.dishId);
       if (entry) {
         entry.quantity += item.quantity;
-        if (tag && !entry.users.includes(tag)) entry.users.push(tag);
+        if (tag) entry.perUser[tag] = (entry.perUser[tag] || 0) + item.quantity;
       } else {
         map.set(item.dishId, {
           dishName: item.dishName,
           price: item.price,
           quantity: item.quantity,
-          users: tag ? [tag] : [],
+          perUser: tag ? { [tag]: item.quantity } : {},
         });
       }
     }
-    return [...map.values()].map((m) => ({ ...m, amount: m.price * m.quantity }));
+    return [...map.values()].map((m) => ({
+      dishName: m.dishName,
+      price: m.price,
+      quantity: m.quantity,
+      amount: m.price * m.quantity,
+      users: Object.keys(m.perUser),
+      perUser: Object.entries(m.perUser).map(([nickname, quantity]) => ({ nickname, quantity })),
+    }));
   }, [order, table]);
+
+  // 获取某位用户点单的明细
+  const getUserItemDetail = (userId: string): UserItemDetail | null => {
+    const p = table?.participants.find((x) => x.id === userId);
+    if (!p) return null;
+    const items = orders.flatMap((o) => o.items).filter((i) => i.userId === userId);
+    const merged = new Map<string, { dishName: string; price: number; quantity: number }>();
+    for (const it of items) {
+      const e = merged.get(it.dishId);
+      if (e) e.quantity += it.quantity;
+      else merged.set(it.dishId, { dishName: it.dishName, price: it.price, quantity: it.quantity });
+    }
+    return { avatar: p.avatar, nickname: p.nickname, items: [...merged.values()] };
+  };
 
   const handleExport = () => {
     if (!mergedItems.length) return;
@@ -269,6 +314,14 @@ export default function BillPage() {
                                 <Trash2 className="size-4" />
                               </button>
                             )}
+                            <button
+                              className="size-8 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 flex items-center justify-center shrink-0"
+                              onClick={() => setUserDetail(getUserItemDetail(p.id))}
+                              aria-label={`查看 ${p.nickname} 的点菜详情`}
+                              title="查看该用户的点菜明细"
+                            >
+                              <Eye className="size-4" />
+                            </button>
                             <div className="text-right">
                               {submitted ? (
                                 <>
@@ -391,6 +444,16 @@ export default function BillPage() {
                       )}
                     </div>
                   </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="shrink-0 gap-1 h-7 px-2"
+                    onClick={() => setDishDetail(merged)}
+                    aria-label={`查看 ${merged.dishName} 详情`}
+                  >
+                    <Eye className="size-3.5" />
+                    查看详情
+                  </Button>
                   <span className="font-semibold tabular-nums shrink-0">
                     ¥{merged.amount.toFixed(2)}
                   </span>
@@ -445,6 +508,81 @@ export default function BillPage() {
             返回点餐页
           </Button>
         </motion.div>
+
+        {/* 菜品详情弹窗：每道菜各用户点了几份 */}
+        <Dialog open={!!dishDetail} onOpenChange={(v) => !v && setDishDetail(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Receipt className="size-5 text-primary" />
+                {dishDetail?.dishName}
+              </DialogTitle>
+              {dishDetail && (
+                <DialogDescription>
+                  共点 {dishDetail.quantity} 份 · ¥{dishDetail.amount.toFixed(2)}
+                </DialogDescription>
+              )}
+            </DialogHeader>
+            <div className="space-y-2">
+              {dishDetail && dishDetail.perUser.length > 0 ? (
+                dishDetail.perUser.map((u) => (
+                  <div
+                    key={u.nickname}
+                    className="flex items-center justify-between rounded-lg border p-3 text-sm"
+                  >
+                    <span className="font-medium">{u.nickname}</span>
+                    <span className="tabular-nums text-muted-foreground">
+                      {u.quantity} 份 · ¥{(u.quantity * dishDetail.price).toFixed(2)}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">暂无点餐记录</p>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* 用户点单详情弹窗：某用户点的所有菜品及数量 */}
+        <Dialog open={!!userDetail} onOpenChange={(v) => !v && setUserDetail(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <span className="text-2xl">{userDetail?.avatar}</span>
+                {userDetail?.nickname} 的点菜明细
+              </DialogTitle>
+              {userDetail && userDetail.items.length > 0 && (
+                <DialogDescription>
+                  共 {userDetail.items.reduce((s, i) => s + i.quantity, 0)} 份
+                </DialogDescription>
+              )}
+            </DialogHeader>
+            <div className="space-y-2">
+              {userDetail && userDetail.items.length > 0 ? (
+                userDetail.items.map((it) => (
+                  <div
+                    key={it.dishName}
+                    className="flex items-center justify-between rounded-lg border p-3 text-sm"
+                  >
+                    <span className="font-medium">{it.dishName}</span>
+                    <div className="text-right">
+                      <div className="tabular-nums font-semibold text-primary">
+                        ¥{(it.price * it.quantity).toFixed(2)}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground">
+                        ¥{it.price} × {it.quantity} 份
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  该用户尚未提交订单
+                </p>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   );
